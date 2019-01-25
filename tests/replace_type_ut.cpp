@@ -20,6 +20,8 @@ using tsl::is_same_v;
 
 struct MyType1{};
 struct MyType2{};
+template <class...>
+struct MyType3{};
 
 // To truly stress test this, I would need a random type generator and associated machinery to test
 // the result.  Here's a crazy compile-time random number generator I could use:
@@ -42,6 +44,8 @@ TEST_CASE("Test tmeta::replace_type", "[replace_type]")
    TEST_TYPE(volatile int, int, long, volatile long);
    TEST_TYPE(volatile const int, volatile int, long, const long);
    TEST_TYPE(void *, void, int, int *);
+   TEST_TYPE(MyType3<int>, MyType3<int>, char, char);
+   TEST_TYPE(MyType3<>, MyType3<>, char, char);
    TEST_TYPE(void *, long, int, void *);
    TEST_TYPE(void *, long, int, void *);
    TEST_TYPE(int * [5][4][3][2][1], int * [2][1], long *, long * [5][4][3]);  // See note!
@@ -50,6 +54,7 @@ TEST_CASE("Test tmeta::replace_type", "[replace_type]")
    TEST_TYPE(int * const * [5][4][7][3][6][11], int * const *, long * const,
       long * const[5][4][7][3][6][11]);
    TEST_TYPE(char & (*)(char &), char &, long &, long & (*)(long &));
+   TEST_TYPE(char & (*)(), char &, long &, long & (*)());
    TEST_TYPE(char & (&)(char &), char &, long &, long & (&)(long &));
    TEST_TYPE(char & (MyType1::*)(char &), MyType1, MyType2, char & (MyType2::*)(char &));
 }

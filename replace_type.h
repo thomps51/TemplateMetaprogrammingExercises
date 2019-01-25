@@ -13,8 +13,8 @@
 //! @file
 //! Provides tmeta::replace_type (Exercise 2-1)
 
-#include <tsl/type_traits/conditional.h>
 #include <type_traits>
+#include <tsl/type_traits/conditional.h>
 
 namespace tmeta {
    /* @brief
@@ -82,62 +82,58 @@ namespace tmeta { namespace details {
     */
    template <class...>
    struct collector;
-   
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
+
+   /* @brief
+      Helper type to handle const volatile types.
+
+      const volatile types are a special case because we need to check if either const Type or
+      volatile type is a match.
+    */
    template <class C, class X, class Y, class = void>
    struct cv_helper
    {
       using type = const volatile replace_type_t<C, X, Y>;
    };
    
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
    template <class C, class X, class Y>
    struct cv_helper<C, X, Y, std::enable_if_t<tsl::is_same_v<X,  volatile C>>>
    {
       using type = const Y;
    };
    
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
    template <class C, class X, class Y>
    struct cv_helper<C, X, Y, std::enable_if_t<tsl::is_same_v<X,  const C>>>
    {
       using type = volatile Y;
    };
 
-   // **********************************************************************************************
-   // Notes: Takes a templated class T and replaces the outer template with U.
-   // E.g. : T<Args....> -> U<Args...>
-   // Usually used with a collector class: i.e. collect all the types you want, then substitute
-   // the collector class with the desired type.  This can be used to recursively construct types
-   // that otherwise wouldn't be valid at every level.
-   // ----------------------------------------------------------------------------------------------
+   /* @brief
+      Takes a templated class T and replaces the outer template with U.
+
+      E.g. : T<Args....> -> U<Args...>
+
+      Usually used with a collector class: i.e. collect all the types you want, then substitute
+      the collector class with the desired type.  This can be used to recursively construct types
+      that otherwise wouldn't be valid at every level, e.g. std::pair<A> is not valid, but
+      std::pair<A,B> is valid.
+    */
    template <class T, template <class...> class U>
    struct substitute;
    
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
    template <class T, template <class...> class U>
    using substitute_t = typename substitute<T, U>::type;
 
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
    template <template<class...> class Collector, class... Args, template <class...> class Original>
    struct substitute<Collector<Args...>, Original>
    {
-      typedef Original<Args...> type;
+      using type = Original<Args...>;
    };
-   
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
+  
+   /* @brief
+      Metafunction to create a function type from a return type and a collection of types.
+
+      Given ReturnType and Collector<Args...>, returns ReturnType (&) (Args...)
+    */
    template <class ReturnType, class Collector>
    struct to_function;
 
@@ -147,9 +143,11 @@ namespace tmeta { namespace details {
       using type = ReturnType (&) (Args...);
    };
    
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
+   /* @brief
+      Metafunction to create a function pointer type from a return type and a collection of types.
+
+      Given ReturnType and Collector<Args...>, returns ReturnType (*) (Args...)
+    */
    template <class ReturnType, class Collector>
    struct to_function_pointer;
 
@@ -158,10 +156,14 @@ namespace tmeta { namespace details {
    {
       using type = ReturnType (*) (Args...);
    };
-   
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
+
+   /* @brief
+      Metafunction to create a member function pointer type from a return type, class type, and
+      collection of types.
+
+      Given ReturnType, ClassType, and Collector<Args...>, returns
+      ReturnType (ClassType::*) (Args...)
+    */
    template <class ReturnType, class ClassType, class Collector>
    struct to_member_function_pointer;
 
@@ -171,55 +173,60 @@ namespace tmeta { namespace details {
       using type = ReturnType (ClassType::*) (Args...);
    };
 
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
+   /* @brief
+      Processes variadic types for replace type.
+
+      It does this by moving the types from the variadic arguments into a Collector, calling
+      replace_type in between.  The Collector can then be used to reassemble the desired type, such
+      as a templated type or a function pointer.
+    */
    template <class...>
    struct variadic_helper;
 
    template <class... Args>
    using variadic_helper_t = typename variadic_helper<Args...>::type;
+
+   // Case when given zero arguments
+   template <template<class...> class Collector, class... Args, class X, class Y>
+   struct variadic_helper<Collector<Args...>, X, Y>
+   {
+      using type = Collector<>;
+   };
  
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
+   // Case when given one argument / base case for multiple arguments
    template <template<class...> class Collector, class... Args, class C, class X, class Y>
    struct variadic_helper<Collector<Args...>, X, Y, C>
    {
-      typedef typename replace_type<C, X, Y>::type current;
-      typedef Collector<Args..., current> type;
+      using current = replace_type_t<C, X, Y>;
+      using type = Collector<Args..., current>;
    };
- 
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
-   template
-   <
-      template <class...> class Collector
-      , class... Args1
-      , class C
-      , class... Args2
-      , class X
-      , class Y
-   >
+
+   // Case for multiple arguments.
+   template <template <class...> class Collector, class... Args1, class C, class... Args2, class X,
+      class Y>
    struct variadic_helper<Collector<Args1...>, X, Y, C, Args2...>
    {
-      typedef typename replace_type<C, X, Y>::type current;
-      typedef Collector<Args1..., current> collector_type;
-      typedef typename variadic_helper<collector_type, X, Y, Args2...>::type type;
+      using current = replace_type_t<C, X, Y>;
+      using collector_type = Collector<Args1..., current>;
+      using type = typename variadic_helper<collector_type, X, Y, Args2...>::type;
    };
 }}
 
 namespace tmeta
 {
    // **********************************************************************************************
-   // Notes:
+   // Notes: After going through the template arguments to check for a match, we need to check the
+   // templated type itself.
    // ----------------------------------------------------------------------------------------------
    template <template<class...> class T, class... Args, class X, class Y>
    struct replace_type<T<Args...>, X, Y>
    {
-      typedef details::variadic_helper_t<details::collector<>, X, Y, Args...> parameters;
-      typedef details::substitute_t<parameters, T> type;
+   private:
+      using parameters = details::variadic_helper_t<details::collector<>, X, Y, Args...>;
+      using actual_type = details::substitute_t<parameters, T>;
+
+   public:
+      using type = tsl::conditional_t<tsl::is_same_v<actual_type, X>, Y, actual_type>;
       static bool const value = !tsl::is_same_v<T<Args...>, type>;
    };
 
@@ -315,7 +322,7 @@ namespace tmeta
    template <class C, class X, class Y>
    struct replace_type
    {
-      typedef tsl::conditional_t<tsl::is_same_v<C, X>, Y, C> type;
+      using type = tsl::conditional_t<tsl::is_same_v<C, X>, Y, C>;
       static bool const value = !tsl::is_same_v<C, type>;
    };
 }
