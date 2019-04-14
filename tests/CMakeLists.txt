@@ -8,6 +8,8 @@ include_directories(/home/athomps/libs/include)
 add_executable(tm_tests
     main.cpp
     add_const_ref_ut.cpp
+    polymorphic_downcast_ut.cpp
     replace_type_ut.cpp
+    type_descriptor_ut.cpp
 )
 
