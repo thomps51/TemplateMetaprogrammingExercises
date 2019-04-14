@@ -13,8 +13,13 @@
 //! @file
 //! Provides tmeta::replace_type (Exercise 2-1)
 
-#include <type_traits>
 #include <tsl/type_traits/conditional.h>
+#include <tsl/type_traits/enable_if.h>
+#include <tsl/type_traits/is_same.h>
+#include "_is_variadic.h"
+#include "_parameter_types.h"
+#include "_return_type.h"
+#include "_to_function.h"
 
 namespace tmeta {
    /* @brief
@@ -69,11 +74,11 @@ namespace tmeta {
       ::value is set to true if the replacement was successful, false if not successful.  ::type
       will be equal to C if replacement was not successful.
    */
-   template <class C, class X, class Y>
+   template <class C, class X, class Y, class Z = void>
    struct replace_type;
 
-   template <class C, class X, class Y>
-   using replace_type_t = typename replace_type<C, X, Y>::type; 
+   template <class C, class X, class Y, class Z = void>
+   using replace_type_t = typename replace_type<C, X, Y, Z>::type; 
 }
 
 namespace tmeta { namespace details {
@@ -96,13 +101,13 @@ namespace tmeta { namespace details {
    };
    
    template <class C, class X, class Y>
-   struct cv_helper<C, X, Y, std::enable_if_t<tsl::is_same_v<X,  volatile C>>>
+   struct cv_helper<C, X, Y, tsl::enable_if_t<tsl::is_same_v<X,  volatile C>>>
    {
       using type = const Y;
    };
    
    template <class C, class X, class Y>
-   struct cv_helper<C, X, Y, std::enable_if_t<tsl::is_same_v<X,  const C>>>
+   struct cv_helper<C, X, Y, tsl::enable_if_t<tsl::is_same_v<X,  const C>>>
    {
       using type = volatile Y;
    };
@@ -127,50 +132,6 @@ namespace tmeta { namespace details {
    struct substitute<Collector<Args...>, Original>
    {
       using type = Original<Args...>;
-   };
-  
-   /* @brief
-      Metafunction to create a function type from a return type and a collection of types.
-
-      Given ReturnType and Collector<Args...>, returns ReturnType (&) (Args...)
-    */
-   template <class ReturnType, class Collector>
-   struct to_function;
-
-   template <class ReturnType, template<class...> class Collector, class... Args>
-   struct to_function<ReturnType, Collector<Args...>>
-   {
-      using type = ReturnType (&) (Args...);
-   };
-   
-   /* @brief
-      Metafunction to create a function pointer type from a return type and a collection of types.
-
-      Given ReturnType and Collector<Args...>, returns ReturnType (*) (Args...)
-    */
-   template <class ReturnType, class Collector>
-   struct to_function_pointer;
-
-   template <class ReturnType, template<class...> class Collector, class... Args>
-   struct to_function_pointer<ReturnType, Collector<Args...>>
-   {
-      using type = ReturnType (*) (Args...);
-   };
-
-   /* @brief
-      Metafunction to create a member function pointer type from a return type, class type, and
-      collection of types.
-
-      Given ReturnType, ClassType, and Collector<Args...>, returns
-      ReturnType (ClassType::*) (Args...)
-    */
-   template <class ReturnType, class ClassType, class Collector>
-   struct to_member_function_pointer;
-
-   template <class ReturnType, class ClassType, template<class...> class Collector, class... Args>
-   struct to_member_function_pointer<ReturnType, ClassType, Collector<Args...>>
-   {
-      using type = ReturnType (ClassType::*) (Args...);
    };
 
    /* @brief
@@ -209,6 +170,19 @@ namespace tmeta { namespace details {
       using current = replace_type_t<C, X, Y>;
       using collector_type = Collector<Args1..., current>;
       using type = typename variadic_helper<collector_type, X, Y, Args2...>::type;
+   };
+
+   template <class Collection, class X, class Y>
+   struct variadic_helper_expander;
+
+   template <class Collection, class X, class Y>
+   using variadic_helper_expander_t = typename variadic_helper_expander<Collection, X, Y>::type;
+
+   // Case when given zero arguments
+   template <template<class...> class Collector, class... Args, class X, class Y>
+   struct variadic_helper_expander<Collector<Args...>, X, Y>
+   {
+      using type = details::variadic_helper_t<details::collector<>, X, Y, Args...>;
    };
 }}
 
@@ -268,58 +242,44 @@ namespace tmeta
       using type = tsl::conditional_t<tsl::is_same<C[N], X>::value, Y, replace_type_t<C, X, Y> [N]>;
       static bool const value = !tsl::is_same_v<C[N], type>;
    };
-
-   // **********************************************************************************************
-   // Notes:
-   // ----------------------------------------------------------------------------------------------
-   template <class T, class... Args, class X, class Y>
-   struct replace_type<T(*)(Args...), X, Y>
-   {
-   private:
-      using return_type = replace_type_t<T, X, Y>;
-      using parameters = details::variadic_helper_t<details::collector<>, X, Y, Args...>;
    
-   public:
-      using type = typename details::to_function_pointer<return_type, parameters>::type;
-      static bool const value = !tsl::is_same_v<T(*)(Args...), type>;
-   };
-
    // **********************************************************************************************
    // Notes:
    // ----------------------------------------------------------------------------------------------
-   template <class T, class... Args, class X, class Y>
-   struct replace_type<T(&)(Args...), X, Y>
+   template <class T, class X, class Y>
+   struct replace_type<T, X, Y, tsl::enable_if_t<std::is_function_v<T>>>
    {
    private:
-      using return_type = replace_type_t<T, X, Y>;
-      using parameters = details::variadic_helper_t<details::collector<>, X, Y, Args...>;
+      using return_type = replace_type_t<details::return_type_t<T>, X, Y>;
+      using parameters = details::variadic_helper_expander_t<details::parameter_types_t<T>, X, Y>;
+      static details::function_qualifiers const function_qualifiers
+         = details::function_qualifiers_v<T>;
+      static bool const is_variadic = details::is_variadic_v<T>;
 
    public:
-      using type = typename details::to_function<return_type, parameters>::type;
-      static bool const value = !tsl::is_same_v<T(&)(Args...), type>;
+      using type = tsl::conditional_t<tsl::is_same_v<T, X>, Y,
+         details::to_function_t<return_type, parameters, function_qualifiers, is_variadic>>;
+      static bool const value = !tsl::is_same_v<T, type>;
    };
-
+   
    // **********************************************************************************************
    // Notes:
    // ----------------------------------------------------------------------------------------------
-   template <class T, class U, class... Args, class X, class Y>
-   struct replace_type<T(U::*)(Args...), X, Y>
+   template <class FunctionType, class ClassType, class X, class Y>
+   struct replace_type<FunctionType ClassType::*, X, Y>
    {
    private:
-      using return_type = replace_type_t<T, X, Y>;
-      using class_type = replace_type_t<U, X, Y>;
-      using parameters = details::variadic_helper_t<details::collector<>, X, Y, Args...>;
+      using class_type  = replace_type_t<ClassType, X, Y>;
 
    public:
-      using type =
-         typename details::to_member_function_pointer<return_type, class_type, parameters>::type;
-      static bool const value = !tsl::is_same_v<T(U::*)(Args...), type>;
+      using type = replace_type_t<FunctionType, X, Y> class_type::*;
+      static bool const value = !tsl::is_same_v<FunctionType ClassType::*, type>;
    };
 
    // **********************************************************************************************
    // Notes:
    // ----------------------------------------------------------------------------------------------
-   template <class C, class X, class Y>
+   template <class C, class X, class Y, class Z>
    struct replace_type
    {
       using type = tsl::conditional_t<tsl::is_same_v<C, X>, Y, C>;
