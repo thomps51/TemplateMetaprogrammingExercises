@@ -69,6 +69,8 @@ TEST_CASE("Test tmeta::replace_type", "[replace_type]")
       char & (MyType2::*)(char &)const noexcept);
    TEST_TYPE(char & (MyType1::*)(char &) const & noexcept, MyType1, MyType2,
       char & (MyType2::*)(char &)const & noexcept);
+   TEST_TYPE(char (MyType1::*), MyType1, MyType2, char (MyType2::*));
+   TEST_TYPE(int (MyType1::*), int, char, char (MyType1::*));
 
    // Yes, you can have pointers to variadic functions!
    using variadic_function_pointer_int = int (*) (char, ...) noexcept;
